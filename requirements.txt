@@ -1,2 +1,6 @@
-databasepassword = scpC7L3c2gkyRgl5
-database_connecting_url: postgresql://postgres.vswzikpkyeogndyqmipl:scpC7L3c2gkyRgl5@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres
+streamlit>=1.35.0
+pandas>=2.0.0
+plotly>=5.20.0
+requests>=2.31.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
