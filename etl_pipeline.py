@@ -1,59 +1,53 @@
-"""
-etl_pipeline.py
-功能：從農業部 API 抓取水果批發價，清洗後寫入 Supabase
-執行方式：python etl_pipeline.py
-"""
-
-import os
-import requests
+import urllib3
 import pandas as pd
+import requests
+import os
 from datetime import date, timedelta
 from sqlalchemy import create_engine, text
 
-# ── 設定 ─────────────────────────────────────────────────────────────────────
-DATABASE_URL = os.environ["DATABASE_URL"]   # 從環境變數讀取，勿寫死
+# 停用 SSL 警告 (避免雲端環境憑證報錯)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 要追蹤的作物（代碼: 名稱）
+# ── 設定 ─────────────────────────────────────────────────────────────────────
+DATABASE_URL = os.environ["DATABASE_URL"]
+
+# 更改為備用 API 實際使用的作物代碼
 CROPS = {
-    "1001": "香蕉",
-    "1101": "西瓜",
+    "A1": "香蕉",
+    "T1": "西瓜",
 }
 
-API_URL = "https://apis.data.gov.tw/agri/api/v1/transactionData"
+# 啟用備用 API
+API_URL = "https://data.moa.gov.tw/Service/OpenData/FromM/FarmTransData.aspx"
 
 # ── Step 1: 抓取資料 ──────────────────────────────────────────────────────────
 def fetch_crop_data(crop_code: str, start_date: date, end_date: date) -> pd.DataFrame:
     """呼叫農業部 API，回傳原始 DataFrame"""
+    # 必須將西元日期轉換為 API 看得懂的民國年格式 (如 2026-05-23 轉為 115.05.23)
+    start_tw = f"{start_date.year - 1911}.{start_date.strftime('%m.%d')}"
+    end_tw = f"{end_date.year - 1911}.{end_date.strftime('%m.%d')}"
+
     params = {
-        "StartDate": start_date.strftime("%Y-%m-%d"),
-        "EndDate":   end_date.strftime("%Y-%m-%d"),
-        "CropCode":  crop_code,
-        "$format":   "JSON",
+        "StartDate": start_tw,
+        "EndDate": end_tw,
+        "CropCode": crop_code,
     }
-    response = requests.get(API_URL, params=params, timeout=30)
+    
+    response = requests.get(API_URL, params=params, timeout=30, verify=False)
     response.raise_for_status()
     data = response.json()
 
     if not data:
-        print(f"  [警告] {crop_code} 在 {start_date}~{end_date} 無資料")
+        print(f"  [警告] {crop_code} 在 {start_tw}~{end_tw} 無資料")
         return pd.DataFrame()
 
-    df = pd.DataFrame(data)
-    return df
+    return pd.DataFrame(data)
 
 # ── Step 2: 資料清洗（Data Wrangling）────────────────────────────────────────
 def clean_data(df: pd.DataFrame, crop_code: str, crop_name: str) -> pd.DataFrame:
-    """
-    清洗邏輯：
-    1. 重新命名欄位（API 回傳為中文欄位名）
-    2. 型別轉換
-    3. 處理休市日（見說明）
-    4. 去除異常值（價格為 0 或負數）
-    """
     if df.empty:
         return df
 
-    # 依實際 API 回傳欄位調整（範例欄位名）
     rename_map = {
         "交易日期": "date",
         "市場名稱": "market_name",
@@ -62,32 +56,26 @@ def clean_data(df: pd.DataFrame, crop_code: str, crop_name: str) -> pd.DataFrame
     }
     df = df.rename(columns=rename_map)
 
-    # 保留需要的欄位
     needed = ["date", "market_name", "avg_price", "trade_volume"]
     df = df[[c for c in needed if c in df.columns]].copy()
 
-    # 型別轉換
-    df["date"]         = pd.to_datetime(df["date"]).dt.date
+    # --- 關鍵修正：將 API 傳回的民國年 (115.05.23) 轉回西元年 (2026-05-23) 存入資料庫 ---
+    def convert_tw_date(tw_date_str):
+        parts = str(tw_date_str).split('.')
+        if len(parts) == 3:
+            return pd.to_datetime(f"{int(parts[0]) + 1911}-{parts[1]}-{parts[2]}").date()
+        return None
+
+    df["date"] = df["date"].apply(convert_tw_date)
+    # -------------------------------------------------------------
+
     df["avg_price"]    = pd.to_numeric(df["avg_price"],    errors="coerce")
     df["trade_volume"] = pd.to_numeric(df["trade_volume"], errors="coerce")
 
-    # 加上作物欄位
     df["crop_code"] = crop_code
     df["crop_name"] = crop_name
 
-    # 去除無效資料（價格異常）
     df = df[df["avg_price"] > 0].copy()
-
-    # ── 休市日處理說明 ──────────────────────────────────────────────────────
-    # 批發市場通常週一休市（農曆假日亦可能休市）。
-    # 本專案採「不補值」策略：
-    #   - 資料庫只儲存「實際有交易」的日期，休市日不寫入任何資料。
-    #   - 前端查詢時，使用 Plotly 的 rangebreaks 功能跳過休市日，
-    #     使折線圖不出現斷點，視覺上呈現連續交易日序列。
-    #   - 優點：資料真實，無人工填補造成的誤導。
-    #   - 如需填補（例如計算移動平均），可在 app.py 的 DataFrame 操作時
-    #     使用 df.resample('D').ffill() 僅用於計算，不寫回資料庫。
-    # ───────────────────────────────────────────────────────────────────────
 
     return df
 
