@@ -15,6 +15,7 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 CROPS = {
     "A1": "香蕉",
     "T1": "西瓜",
+    "J1": "玉荷包"
 }
 
 # 啟用備用 API
@@ -23,14 +24,16 @@ API_URL = "https://data.moa.gov.tw/Service/OpenData/FromM/FarmTransData.aspx"
 # ── Step 1: 抓取資料 ──────────────────────────────────────────────────────────
 def fetch_crop_data(crop_code: str, start_date: date, end_date: date) -> pd.DataFrame:
     """呼叫農業部 API，回傳原始 DataFrame"""
+
     # 必須將西元日期轉換為 API 看得懂的民國年格式 (如 2026-05-23 轉為 115.05.23)
     start_tw = f"{start_date.year - 1911}.{start_date.strftime('%m.%d')}"
     end_tw = f"{end_date.year - 1911}.{end_date.strftime('%m.%d')}"
 
     params = {
-        "StartDate": start_tw,
-        "EndDate": end_tw,
-        "CropCode": crop_code,
+        "StartDate": start_tw, # 開始日期
+        "EndDate": end_tw,     # 結束日期
+        "CropCode": crop_code, # 作物代碼
+        "TcType": "N05"        # 種類代碼: 水果
     }
     
     response = requests.get(API_URL, params=params, timeout=30, verify=False)
@@ -54,6 +57,7 @@ def clean_data(df: pd.DataFrame, crop_code: str, crop_name: str) -> pd.DataFrame
         "平均價":   "avg_price",
         "交易量":   "trade_volume",
     }
+
     df = df.rename(columns=rename_map)
 
     needed = ["date", "market_name", "avg_price", "trade_volume"]
@@ -91,6 +95,7 @@ def upsert_to_db(df: pd.DataFrame, engine) -> None:
         VALUES (:date, :market_name, :crop_code, :crop_name, :avg_price, :trade_volume)
         ON CONFLICT (date, market_name, crop_code) DO NOTHING
     """)
+    
     with engine.begin() as conn:
         conn.execute(insert_sql, rows)
     print(f"  [成功] 寫入 {len(rows)} 筆資料")

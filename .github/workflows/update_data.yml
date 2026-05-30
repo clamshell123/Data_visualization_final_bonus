@@ -1,18 +1,25 @@
+# 本檔案為 GitHub Actions 的設定檔
+
+# Actions 的名字
 name: Daily Fruit Price ETL
 
+# 觸發條件
 on:
   schedule:
     # 每天 UTC 00:00 = 台灣時間 08:00
     - cron: "0 0 * * *"
   workflow_dispatch:  # 允許手動觸發（方便測試）
 
+# 設定環境變數
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# 工作流程
 jobs:
   etl:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # 設定作業系統為 Ubuntu
 
+    # 要執行的步驟
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
