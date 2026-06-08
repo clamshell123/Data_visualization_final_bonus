@@ -14,11 +14,10 @@ from datetime import date, timedelta
 # ── 頁面基本設定 ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="台灣水果批發價格儀表板",
-    page_icon="🍌",
     layout="wide",
 )
 
-st.title("🍌 台灣水果批發市場價格儀表板")
+st.title("台灣水果批發市場價格儀表板")
 st.caption(f"資料來源：農業部農產品交易行情 API｜更新時間：每日台灣時間 08:00")
 
 # ── 讀取資料（加快取，10 分鐘重整一次）────────────────────────────────────────
@@ -26,7 +25,6 @@ st.caption(f"資料來源：農業部農產品交易行情 API｜更新時間：
 def load_data(days: int = 30) -> pd.DataFrame:
     """從 Supabase 讀取最近 N 天的資料"""
     # 這裡會從 Streamlit Community Cloud 的 Secrets 或本機環境變數讀取
-    # 如果在本機測試，請確保有設定 DATABASE_URL 環境變數
     db_url = st.secrets["DATABASE_URL"] if "DATABASE_URL" in st.secrets else os.environ.get("DATABASE_URL")
     
     if not db_url:
@@ -36,7 +34,7 @@ def load_data(days: int = 30) -> pd.DataFrame:
     engine = create_engine(db_url)
     since = date.today() - timedelta(days=days)
     
-    # 簡單的 SQL 查詢
+    # SQL query
     query = f"""
         SELECT date, market_name, crop_name, avg_price, trade_volume
         FROM   crop_price
@@ -47,7 +45,7 @@ def load_data(days: int = 30) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"])
     return df
 
-# 先嘗試載入資料
+# 嘗試載入資料
 try:
     df = load_data(days=30)
 except Exception as e:
@@ -60,7 +58,7 @@ if df.empty:
 
 # ── 側邊欄篩選器 ──────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("🔍 篩選條件")
+    st.header("篩選條件")
     
     # 水果選擇
     crop_options = df["crop_name"].unique().tolist()
@@ -93,7 +91,7 @@ if filtered.empty:
     st.stop()
 
 # ── 區塊 1：今日各市場價格（最新一天）────────────────────────────────────────
-st.subheader(f"📊 {selected_crop} 最新交易日各市場均價")
+st.subheader(f"{selected_crop} 最新交易日各市場均價")
 
 latest_date = filtered["date"].max()
 # 篩選最新一天的資料，並依照價格排序
@@ -131,7 +129,7 @@ else:
 st.divider()
 
 # ── 區塊 2：近 N 天各市場價格波動折線圖 ──────────────────────────────────────
-st.subheader(f"📈 近 {days_range} 天價格走勢")
+st.subheader(f"近 {days_range} 天價格走勢")
 
 # 根據 Slider 篩選近期資料
 recent = filtered[filtered["date"] >= (pd.to_datetime('today') - pd.Timedelta(days=days_range))]
@@ -190,7 +188,7 @@ else:
 st.divider()
 
 # ── 區塊 3：各市場箱形圖（整體分布比較）─────────────────────────────────────
-st.subheader(f"📦 各市場價格分布比較（近 {days_range} 天）")
+st.subheader(f"各市場價格分布比較（近 {days_range} 天）")
 
 if not recent.empty:
     fig_box = px.box(
@@ -208,5 +206,5 @@ if not recent.empty:
 st.divider()
 
 # ── 原始資料表 ─────────────────────────────────────────────────────────────────
-with st.expander("🗂 查看過濾後的原始資料"):
+with st.expander("查看過濾後的原始資料"):
     st.dataframe(filtered.sort_values("date", ascending=False), use_container_width=True)

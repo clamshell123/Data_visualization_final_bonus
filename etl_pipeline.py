@@ -11,21 +11,21 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ── 設定 ─────────────────────────────────────────────────────────────────────
 DATABASE_URL = os.environ["DATABASE_URL"]
 
-# 更改為備用 API 實際使用的作物代碼
+# 作物代碼
 CROPS = {
     "A1": "香蕉",
     "T1": "西瓜",
     "J1": "玉荷包"
 }
 
-# 啟用備用 API
+# 對接 API
 API_URL = "https://data.moa.gov.tw/Service/OpenData/FromM/FarmTransData.aspx"
 
 # ── Step 1: 抓取資料 ──────────────────────────────────────────────────────────
 def fetch_crop_data(crop_code: str, start_date: date, end_date: date) -> pd.DataFrame:
     """呼叫農業部 API，回傳原始 DataFrame"""
 
-    # 必須將西元日期轉換為 API 看得懂的民國年格式 (如 2026-05-23 轉為 115.05.23)
+    # 將西元日期轉換為 API 需要的民國年格式 (如 2026-05-23 轉為 115.05.23)
     start_tw = f"{start_date.year - 1911}.{start_date.strftime('%m.%d')}"
     end_tw = f"{end_date.year - 1911}.{end_date.strftime('%m.%d')}"
 
@@ -95,14 +95,14 @@ def upsert_to_db(df: pd.DataFrame, engine) -> None:
         VALUES (:date, :market_name, :crop_code, :crop_name, :avg_price, :trade_volume)
         ON CONFLICT (date, market_name, crop_code) DO NOTHING
     """)
-    
+
     with engine.begin() as conn:
         conn.execute(insert_sql, rows)
     print(f"  [成功] 寫入 {len(rows)} 筆資料")
 
 # ── 主流程 ────────────────────────────────────────────────────────────────────
 def main():
-    # 抓取「前 7 天」的資料（確保補齊任何遺漏）
+    # 抓取「前 30 天」的資料（確保補齊任何遺漏）
     end_date   = date.today() - timedelta(days=1)
     start_date = end_date - timedelta(days=6)
 
